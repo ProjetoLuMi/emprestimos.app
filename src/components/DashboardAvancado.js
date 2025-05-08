@@ -8,7 +8,6 @@ export default function DashboardAvancado({ clientes }) {
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState('');
   const [tokenAtual, setTokenAtual] = useState('');
-
   const cores = ['#D4AF37', '#235D3A', '#7D4F14'];
 
   useEffect(() => {
@@ -48,11 +47,9 @@ export default function DashboardAvancado({ clientes }) {
         totalEmprestado += parseFloat(emp.valorEmprestado || 0);
 
         emp.parcelas.forEach(p => {
-          if (p.status === 'paga' || p.status === 'pulado') {
-            totalRecebido += parseFloat(p.valor || 0);
-          } else if (p.status === 'pendente') {
-            totalPendente += parseFloat(p.valor || 0);
-          }
+          const valor = parseFloat(p.valor || 0);
+          if (p.status === 'paga' || p.status === 'pulado') totalRecebido += valor;
+          if (p.status === 'pendente') totalPendente += valor;
         });
       });
     });
@@ -60,23 +57,20 @@ export default function DashboardAvancado({ clientes }) {
     return { totalEmprestado, totalRecebido, totalPendente };
   };
 
-  const resumo = calcularResumo();
-
-  const dadosGrafico = [
-    { nome: 'Emprestado', valor: resumo.totalEmprestado },
-    { nome: 'Recebido', valor: resumo.totalRecebido },
-    { nome: 'Pendente', valor: resumo.totalPendente },
-  ];
-
   const mostrarVencimentosHoje = () => {
-    const hojeFormatado = new Date().toISOString().split('T')[0];
+    const hoje = new Date();
+    const hojeFormatado = hoje.toISOString().split('T')[0];
     const mensagensHoje = [];
 
     clientes?.forEach(cliente => {
       cliente.emprestimos?.forEach(emp => {
         emp.parcelas?.forEach(p => {
-          const vencimentoFormatado = new Date(p.vencimento).toISOString().split('T')[0];
-          if (vencimentoFormatado === hojeFormatado && p.status === 'pendente') {
+          if (!p.vencimento) return;
+          const venc = new Date(p.vencimento);
+          if (isNaN(venc.getTime())) return;
+          const vencFormatado = venc.toISOString().split('T')[0];
+
+          if (vencFormatado === hojeFormatado && p.status === 'pendente') {
             mensagensHoje.push({
               nome: cliente.nome,
               numero: p.numero,
@@ -90,34 +84,43 @@ export default function DashboardAvancado({ clientes }) {
 
     if (mensagensHoje.length === 0) return alert("✅ Nenhuma parcela pendente vence hoje.");
 
-    const popup = window.open('', '', 'width=500,height=600');
-    popup.document.write('<html><body style="background:#111;color:#D4AF37;padding:20px;">');
+    const popup = window.open('', 'VencimentosHoje', 'width=500,height=600');
+    popup.document.write('<html><head><title>Vencimentos de Hoje</title></head><body style="font-family:sans-serif;background:#111;color:#D4AF37;padding:20px;">');
     popup.document.write('<h2>📅 Vencimentos de Hoje</h2>');
+
     mensagensHoje.forEach(m => {
-      popup.document.write(`<p><strong>${m.nome}</strong> • Parcela #${m.numero} • R$ ${m.valor}<br/>💬 ${m.mensagem}</p><hr/>`);
+      popup.document.write(`
+        <div style="margin-bottom: 1.5rem; border-bottom: 1px solid #D4AF37; padding-bottom: 10px;">
+          <p>📌 <strong>${m.nome}</strong> — Parcela #${m.numero} • R$ ${m.valor}</p>
+          <p>💬 ${m.mensagem}</p>
+        </div>
+      `);
     });
+
     popup.document.write('</body></html>');
     popup.document.close();
   };
 
   const mostrarParcelasVencidas = () => {
     const hoje = new Date();
+    const hojeFormatado = hoje.toISOString().split('T')[0];
     const mensagensAtraso = [];
 
     clientes?.forEach(cliente => {
       cliente.emprestimos?.forEach(emp => {
         emp.parcelas?.forEach(p => {
+          if (!p.vencimento) return;
           const venc = new Date(p.vencimento);
+          if (isNaN(venc.getTime())) return;
           const vencFormatado = venc.toISOString().split('T')[0];
-          const hojeFormatado = hoje.toISOString().split('T')[0];
 
           if (p.status === 'pendente' && vencFormatado < hojeFormatado) {
             mensagensAtraso.push({
               nome: cliente.nome,
               numero: p.numero,
               valor: p.valor,
-              vencimento: p.vencimento,
-              mensagem: `Olá ${cliente.nome}, sua parcela #${p.numero} no valor de R$ ${p.valor} venceu em ${p.vencimento}. Favor regularizar.`
+              vencimento: vencFormatado,
+              mensagem: `Olá ${cliente.nome}, sua parcela #${p.numero} no valor de R$ ${p.valor} venceu em ${vencFormatado}. Favor regularizar.`
             });
           }
         });
@@ -126,12 +129,19 @@ export default function DashboardAvancado({ clientes }) {
 
     if (mensagensAtraso.length === 0) return alert("✅ Nenhuma parcela vencida.");
 
-    const popup = window.open('', '', 'width=500,height=600');
-    popup.document.write('<html><body style="background:#111;color:#D4AF37;padding:20px;">');
-    popup.document.write('<h2>⚠️ Parcelas Atrasadas</h2>');
+    const popup = window.open('', 'ParcelasVencidas', 'width=500,height=600');
+    popup.document.write('<html><head><title>Parcelas Vencidas</title></head><body style="font-family:sans-serif;background:#111;color:#D4AF37;padding:20px;">');
+    popup.document.write('<h2>⚠️ Parcelas em Atraso</h2>');
+
     mensagensAtraso.forEach(m => {
-      popup.document.write(`<p><strong>${m.nome}</strong> • Parcela #${m.numero} • R$ ${m.valor} • Venc: ${m.vencimento}<br/>💬 ${m.mensagem}</p><hr/>`);
+      popup.document.write(`
+        <div style="margin-bottom: 1.5rem; border-bottom: 1px solid #D4AF37; padding-bottom: 10px;">
+          <p>📌 <strong>${m.nome}</strong> — Parcela #${m.numero} • R$ ${m.valor} • Venc: ${m.vencimento}</p>
+          <p>💬 ${m.mensagem}</p>
+        </div>
+      `);
     });
+
     popup.document.write('</body></html>');
     popup.document.close();
   };
@@ -153,6 +163,13 @@ export default function DashboardAvancado({ clientes }) {
     }
     return null;
   };
+
+  const resumo = calcularResumo();
+  const dadosGrafico = [
+    { nome: 'Emprestado', valor: resumo.totalEmprestado },
+    { nome: 'Recebido', valor: resumo.totalRecebido },
+    { nome: 'Pendente', valor: resumo.totalPendente },
+  ];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', background: '#000', padding: '2rem', borderRadius: '12px', border: '1px solid #D4AF37' }}>
