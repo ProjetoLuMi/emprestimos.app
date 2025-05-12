@@ -4,6 +4,7 @@ import { db } from '../services/firebase';
 import { collection, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { jsPDF } from 'jspdf';
 import DashboardAvancado from '../components/DashboardAvancado';
+import { deleteDoc } from 'firebase/firestore';
 
 export default function VisualizarEmprestimos() {
   
@@ -299,6 +300,48 @@ export default function VisualizarEmprestimos() {
     doc.save(`Emprestimo_${i + 1}.pdf`);
   };
   
+ const excluirCliente = async () => {
+  const confirmar = window.confirm(`Deseja excluir permanentemente o cliente ${clienteSelecionado.nome}?`);
+  if (!confirmar) return;
+
+  try {
+    await deleteDoc(doc(db, 'clientes', clienteSelecionado.id));
+    alert("Cliente excluído com sucesso.");
+    setClienteSelecionado(null);
+
+    const snapshot = await getDocs(collection(db, 'clientes'));
+    const lista = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    setClientes(lista);
+    setClientesFiltrados(lista);
+  } catch (error) {
+    console.error("Erro ao excluir cliente:", error);
+    alert("Erro ao excluir cliente.");
+  }
+};
+
+const editarCliente = async () => {
+  const novoNome = prompt("Novo nome do cliente:", clienteSelecionado.nome);
+  const novoCPF = prompt("Novo CPF do cliente:", clienteSelecionado.cpf);
+
+  if (!novoNome || !novoCPF) return alert("Nome e CPF são obrigatórios.");
+
+  try {
+    await updateDoc(doc(db, 'clientes', clienteSelecionado.id), {
+      nome: novoNome,
+      cpf: novoCPF
+    });
+    alert("Dados do cliente atualizados.");
+    await selecionarCliente(clienteSelecionado.id); // recarrega
+    const snapshot = await getDocs(collection(db, 'clientes'));
+    const lista = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    setClientes(lista);
+    setClientesFiltrados(lista);
+  } catch (error) {
+    console.error("Erro ao editar cliente:", error);
+    alert("Erro ao editar cliente.");
+  }
+};
+
   // continua com os métodos de quitar, cancelar, excluir, editar e renderização JSX normalmente
 
 
@@ -339,6 +382,11 @@ export default function VisualizarEmprestimos() {
       {clienteSelecionado && (
         <div style={{ marginTop: '2rem' }}>
           <h3>📂 Cliente: {clienteSelecionado.nome}</h3>
+
+          <div style={{ marginBottom: '1rem' }}>
+  <button onClick={editarCliente} style={{ marginRight: '1rem', background: '#2d2', color: '#000', padding: '0.5rem', border: 'none', borderRadius: '6px' }}>✏️ Editar Cliente</button>
+  <button onClick={excluirCliente} style={{ background: '#d22', color: '#fff', padding: '0.5rem', border: 'none', borderRadius: '6px' }}>🗑️ Excluir Cliente</button>
+</div>
 
           {emprestimos.map((emp, i) => (
             

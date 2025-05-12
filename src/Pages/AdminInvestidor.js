@@ -5,7 +5,8 @@ import {
   collection,
   getDocs,
   doc,
-  updateDoc
+  updateDoc,
+  deleteDoc
 } from 'firebase/firestore';
 
 export default function AdminInvestidor() {
@@ -126,6 +127,24 @@ export default function AdminInvestidor() {
     buscarInvestidores();
   };
 
+  const excluirInvestidor = async (investidorId) => {
+    const senha = prompt('Digite a senha de admin para excluir o investidor:');
+    if (senha !== 'admin123') return alert('Senha incorreta');
+    await deleteDoc(doc(db, 'investidores', investidorId));
+    buscarInvestidores();
+  };
+
+  const excluirContrato = async (investidorId, contratoIndex) => {
+    const senha = prompt('Digite a senha de admin para excluir o contrato:');
+    if (senha !== 'admin123') return alert('Senha incorreta');
+    const ref = doc(db, 'investidores', investidorId);
+    const investidor = investidores.find(i => i.id === investidorId);
+    const contratos = [...investidor.contratos];
+    contratos.splice(contratoIndex, 1);
+    await updateDoc(ref, { contratos });
+    buscarInvestidores();
+  };
+
   const toggleColapso = (id) => {
     setColapsados(prev =>
       prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
@@ -137,7 +156,10 @@ export default function AdminInvestidor() {
       <h2>🔐 Admin Investidores</h2>
       {investidores.map((inv, idx) => (
         <div key={idx} style={{ marginBottom: 30, border: '1px solid #ccc', padding: 10 }}>
-          <h3>{inv.nome}</h3>
+          <h3>
+            {inv.nome}{' '}
+            <button onClick={() => excluirInvestidor(inv.id)} style={{ marginLeft: 10, backgroundColor: '#dc3545', color: '#fff' }}>🗑️ Excluir Investidor</button>
+          </h3>
           {inv.contratos?.map((c, i) => {
             const parcelas = c.parcelasEditadas || calcularParcelas(c.valor, c.meses, c.juros, c.dataInicio);
             const pagamentos = c.pagamentos || Array.from({ length: c.meses }, () => 'pendente');
@@ -152,13 +174,14 @@ export default function AdminInvestidor() {
                     </button>
                     <button onClick={() => editarTodasParcelas(inv.id, i)} style={{ marginLeft: 10 }}>✏️ Todas</button>
                     <button onClick={() => editarDataInicio(inv.id, i)} style={{ marginLeft: 10 }}>📆 Início</button>
+                    <button onClick={() => excluirContrato(inv.id, i)} style={{ marginLeft: 10, backgroundColor: '#dc3545', color: '#fff' }}>🗑️ Excluir</button>
                   </div>
                 </div>
                 {colapsados.includes(`${idx}-${i}`) && (
                   <>
                     <p>R$ {c.valor} • {c.meses} meses • {c.juros}% juros</p>
                     <h4>📅 Parcelas:</h4>
-                    <table style={{ width: '60%', borderCollapse: 'collapse', backgroundColor: '#000', color: '#fff' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', backgroundColor: '#000', color: '#fff' }}>
                       <thead>
                         <tr>
                           <th>#</th>
@@ -170,7 +193,7 @@ export default function AdminInvestidor() {
                       </thead>
                       <tbody>
                         {parcelas.map((p, j) => (
-                          <tr key={j} style={{ backgroundColor: pagamentos[j] === 'pago' ? '#14532d' : '#000' }}>
+                          <tr key={j} style={{ backgroundColor: pagamentos[j] === 'pago' ? '#14532d' : '#7f1d1d' }}>
                             <td>{p.numero}</td>
                             <td>{p.vencimento}</td>
                             <td>R$ {p.valor.toFixed(2)}</td>
