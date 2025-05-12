@@ -7,18 +7,9 @@ import {
   doc,
   updateDoc
 } from 'firebase/firestore';
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer
-} from 'recharts';
 
 export default function AdminInvestidor() {
   const [investidores, setInvestidores] = useState([]);
-  const [senhaAdmin, setSenhaAdmin] = useState('');
   const [colapsados, setColapsados] = useState([]);
 
   const buscarInvestidores = async () => {
@@ -31,21 +22,26 @@ export default function AdminInvestidor() {
     buscarInvestidores();
   }, []);
 
-  const calcularParcelas = (valor, meses, juros) => {
+  const calcularParcelas = (valor, meses, juros, dataInicio = new Date()) => {
     const parcelas = [];
-    const parcelaBase = valor * Math.pow(1 + juros / 100, meses) / meses;
-    const hoje = new Date();
+    const inicio = new Date(dataInicio);
+    const valorBase = valor / meses;
+    const valorFinal = valor + (valor * (juros / 100));
 
     for (let i = 0; i < meses; i++) {
-      const venc = new Date(hoje);
-      venc.setMonth(hoje.getMonth() + i);
+      const venc = new Date(inicio);
+      venc.setMonth(inicio.getMonth() + i);
+      const vencimento = venc.toISOString().split('T')[0];
+      const valorParcela = i === meses - 1 ? valorFinal : valorBase;
+
       parcelas.push({
         numero: i + 1,
-        valor: Number(parcelaBase.toFixed(2)),
-        vencimento: venc.toISOString().split('T')[0],
+        valor: Number(valorParcela.toFixed(2)),
+        vencimento,
         status: 'pendente'
       });
     }
+
     return parcelas;
   };
 
@@ -69,20 +65,71 @@ export default function AdminInvestidor() {
     buscarInvestidores();
   };
 
+  const editarParcela = async (investidorId, contratoIndex, parcelaIndex) => {
+    const novoValor = prompt('Novo valor da parcela:');
+    if (!novoValor || isNaN(novoValor)) return alert('Valor inválido.');
+
+    const ref = doc(db, 'investidores', investidorId);
+    const investidor = investidores.find(i => i.id === investidorId);
+    const contratos = [...investidor.contratos];
+
+    if (!contratos[contratoIndex].parcelasEditadas) {
+      contratos[contratoIndex].parcelasEditadas = calcularParcelas(
+        contratos[contratoIndex].valor,
+        contratos[contratoIndex].meses,
+        contratos[contratoIndex].juros,
+        contratos[contratoIndex].dataInicio
+      );
+    }
+
+    contratos[contratoIndex].parcelasEditadas[parcelaIndex].valor = Number(novoValor);
+    await updateDoc(ref, { contratos });
+    buscarInvestidores();
+  };
+
+  const editarTodasParcelas = async (investidorId, contratoIndex) => {
+    const novoValor = prompt('Novo valor para todas as parcelas:');
+    if (!novoValor || isNaN(novoValor)) return alert('Valor inválido.');
+
+    const ref = doc(db, 'investidores', investidorId);
+    const investidor = investidores.find(i => i.id === investidorId);
+    const contratos = [...investidor.contratos];
+
+    const parcelas = calcularParcelas(
+      contratos[contratoIndex].valor,
+      contratos[contratoIndex].meses,
+      contratos[contratoIndex].juros,
+      contratos[contratoIndex].dataInicio
+    ).map((p) => ({ ...p, valor: Number(novoValor) }));
+
+    contratos[contratoIndex].parcelasEditadas = parcelas;
+    await updateDoc(ref, { contratos });
+    buscarInvestidores();
+  };
+
+  const editarDataInicio = async (investidorId, contratoIndex) => {
+    const novaData = prompt('Nova data de início (YYYY-MM-DD):');
+    if (!novaData || isNaN(Date.parse(novaData))) return alert('Data inválida.');
+
+    const ref = doc(db, 'investidores', investidorId);
+    const investidor = investidores.find(i => i.id === investidorId);
+    const contratos = [...investidor.contratos];
+    contratos[contratoIndex].dataInicio = novaData;
+    contratos[contratoIndex].parcelasEditadas = calcularParcelas(
+      contratos[contratoIndex].valor,
+      contratos[contratoIndex].meses,
+      contratos[contratoIndex].juros,
+      novaData
+    );
+
+    await updateDoc(ref, { contratos });
+    buscarInvestidores();
+  };
+
   const toggleColapso = (id) => {
     setColapsados(prev =>
       prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
     );
-  };
-
-  const gerarGrafico = (valor, meses, juros) => {
-    const data = [];
-    let montante = valor;
-    for (let i = 1; i <= meses; i++) {
-      montante *= 1 + juros / 100;
-      data.push({ mes: `${i}º`, lucro: montante - valor, total: montante });
-    }
-    return data;
   };
 
   return (
@@ -92,53 +139,57 @@ export default function AdminInvestidor() {
         <div key={idx} style={{ marginBottom: 30, border: '1px solid #ccc', padding: 10 }}>
           <h3>{inv.nome}</h3>
           {inv.contratos?.map((c, i) => {
-            const parcelas = c.pagamentos?.length === c.meses
-              ? c.pagamentos
-              : calcularParcelas(c.valor, c.meses, c.juros).map(p => p.status);
+            const parcelas = c.parcelasEditadas || calcularParcelas(c.valor, c.meses, c.juros, c.dataInicio);
+            const pagamentos = c.pagamentos || Array.from({ length: c.meses }, () => 'pendente');
+
             return (
               <div key={i} style={{ marginBottom: 20 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <strong>Contrato #{i + 1}</strong>
-                  <button onClick={() => toggleColapso(`${idx}-${i}`)}>
-                    {colapsados.includes(`${idx}-${i}`) ? '🔽 Recolher' : '▶️ Expandir'}
-                  </button>
+                  <div>
+                    <button onClick={() => toggleColapso(`${idx}-${i}`)}>
+                      {colapsados.includes(`${idx}-${i}`) ? '🔽 Recolher' : '▶️ Expandir'}
+                    </button>
+                    <button onClick={() => editarTodasParcelas(inv.id, i)} style={{ marginLeft: 10 }}>✏️ Todas</button>
+                    <button onClick={() => editarDataInicio(inv.id, i)} style={{ marginLeft: 10 }}>📆 Início</button>
+                  </div>
                 </div>
                 {colapsados.includes(`${idx}-${i}`) && (
                   <>
                     <p>R$ {c.valor} • {c.meses} meses • {c.juros}% juros</p>
-                    <ResponsiveContainer width="100%" height={200}>
-                      <BarChart data={gerarGrafico(c.valor, c.meses, c.juros)} layout="vertical">
-                        <XAxis type="number" />
-                        <YAxis dataKey="mes" type="category" />
-                        <Tooltip />
-                        <Bar dataKey="total" stackId="a" fill="#8884d8" />
-                        <Bar dataKey="lucro" stackId="a" fill="green" />
-                      </BarChart>
-                    </ResponsiveContainer>
                     <h4>📅 Parcelas:</h4>
-                    {calcularParcelas(c.valor, c.meses, c.juros).map((p, j) => (
-                      <div key={j}>
-                        <p>
-                          #{j + 1} • Venc: {p.vencimento} • R$ {p.valor} • Status: {c.pagamentos?.[j] || 'pendente'}
-                          <button
-                            onClick={() => {
-                              const senha = prompt('Senha admin:');
-                              marcarParcela(inv.id, i, j, senha);
-                            }}
-                            style={{ marginLeft: 10 }}>
-                            ✅ Pagar
-                          </button>
-                          <button
-                            onClick={() => {
-                              const senha = prompt('Senha admin:');
-                              desfazerParcela(inv.id, i, j, senha);
-                            }}
-                            style={{ marginLeft: 10 }}>
-                            🔄 Desfazer
-                          </button>
-                        </p>
-                      </div>
-                    ))}
+                    <table style={{ width: '60%', borderCollapse: 'collapse', backgroundColor: '#000', color: '#fff' }}>
+                      <thead>
+                        <tr>
+                          <th>#</th>
+                          <th>Vencimento</th>
+                          <th>Valor</th>
+                          <th>Status</th>
+                          <th>Ações</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {parcelas.map((p, j) => (
+                          <tr key={j} style={{ backgroundColor: pagamentos[j] === 'pago' ? '#14532d' : '#000' }}>
+                            <td>{p.numero}</td>
+                            <td>{p.vencimento}</td>
+                            <td>R$ {p.valor.toFixed(2)}</td>
+                            <td>{pagamentos[j]}</td>
+                            <td>
+                              <button onClick={() => {
+                                const senha = prompt('Senha admin:');
+                                marcarParcela(inv.id, i, j, senha);
+                              }}>✅</button>
+                              <button onClick={() => {
+                                const senha = prompt('Senha admin:');
+                                desfazerParcela(inv.id, i, j, senha);
+                              }} style={{ marginLeft: 10 }}>🔄</button>
+                              <button onClick={() => editarParcela(inv.id, i, j)} style={{ marginLeft: 10 }}>✏️</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </>
                 )}
               </div>

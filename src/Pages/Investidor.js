@@ -11,62 +11,6 @@ import {
   getDoc
 } from 'firebase/firestore';
 
-const ParcelaQuadradinhos = ({ parcelas }) => {
-  const [visiveis, setVisiveis] = useState([]);
-
-  useEffect(() => {
-    // Animação de entrada em cascata
-    const interval = setInterval(() => {
-      setVisiveis(prev => {
-        if (prev.length < parcelas.length) {
-          return [...prev, parcelas[prev.length]];
-        } else {
-          clearInterval(interval);
-          return prev;
-        }
-      });
-    }, 40);
-    return () => clearInterval(interval);
-  }, [parcelas]);
-
-  const corStatus = (status) => {
-    switch (status) {
-      case 'paga': return '#28a745';     // Verde
-      case 'vencida': return '#dc3545';  // Vermelho
-      case 'pendente': return '#ffc107'; // Amarelo
-      default: return '#ccc';
-    }
-  };
-  return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
-      {visiveis.map(p => (
-        <div
-          key={p.numero}
-          title={`Parcela ${p.numero} - ${p.status}`}
-          style={{
-            width: 42,
-            height: 42,
-            backgroundColor: corStatus(p.status),
-            color: '#fff',
-            fontWeight: 'bold',
-            borderRadius: 8,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-            transition: 'all 0.2s ease-in-out',
-            cursor: 'default'
-          }}
-        >
-          {p.numero}
-        </div>
-      ))}
-    </div>
-  );
-};
-
-
-
 export default function InvestidorPage() {
   const [username, setUsername] = useState('');
   const [senha, setSenha] = useState('');
@@ -141,20 +85,27 @@ export default function InvestidorPage() {
     alert('Contato atualizado.');
   };
 
-  const gerarParcelas = (c) => {
-    const lista = [];
-    const dataCriacao = new Date(c.criadoEm);
-    const pagos = c.pagamentos || [];
-    for (let i = 0; i < c.meses; i++) {
-      const vencimento = new Date(dataCriacao);
-      vencimento.setMonth(vencimento.getMonth() + i);
-      const hoje = new Date();
-      const isPaga = pagos.includes(i + 1);
-      const isVencida = !isPaga && vencimento < hoje;
-      const status = isPaga ? 'paga' : isVencida ? 'vencida' : 'pendente';
-      lista.push({ numero: i + 1, status });
+  const calcularParcelas = (valor, meses, juros, dataInicio = new Date()) => {
+    const parcelas = [];
+    const inicio = new Date(dataInicio);
+    const valorBase = valor / meses;
+    const valorFinal = valor + (valor * (juros / 100));
+
+    for (let i = 0; i < meses; i++) {
+      const venc = new Date(inicio);
+      venc.setMonth(inicio.getMonth() + i);
+      const vencimento = venc.toISOString().split('T')[0];
+      const valorParcela = i === meses - 1 ? valorFinal : valorBase;
+
+      parcelas.push({
+        numero: i + 1,
+        valor: Number(valorParcela.toFixed(2)),
+        vencimento,
+        status: 'pendente'
+      });
     }
-    return lista;
+
+    return parcelas;
   };
 
   const thStyle = {
@@ -163,7 +114,7 @@ export default function InvestidorPage() {
     background: '#222',
     textAlign: 'left'
   };
-  
+
   const tdStyle = {
     padding: '8px',
     borderBottom: '1px solid #333'
@@ -179,7 +130,6 @@ export default function InvestidorPage() {
       </div>
     );
   }
-  
 
   return (
     <div style={{ padding: 20 }}>
@@ -203,43 +153,65 @@ export default function InvestidorPage() {
       <button onClick={salvarContrato}>📝 Assinar Contrato</button>
 
       <h3 style={{ marginTop: 30 }}>📊 Tabela de Projeção de Ganhos</h3>
-<table style={{ width: '100%', background: '#111', color: '#D4AF37', borderCollapse: 'collapse' }}>
-  <thead>
-    <tr>
-      <th style={thStyle}>Mês</th>
-      <th style={thStyle}>Lucro no mês</th>
-      <th style={thStyle}>Lucro acumulado</th>
-      <th style={thStyle}>Total previsto</th>
-    </tr>
-  </thead>
-  <tbody>
-    {Array.from({ length: meses }, (_, i) => {
-      const lucroMes = (valor * juros) / 100;
-      const acumulado = lucroMes * (i + 1);
-      const total = valor + lucroMes * meses;
+      <table style={{ width: '100%', background: '#111', color: '#D4AF37', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr>
+            <th style={thStyle}>Mês</th>
+            <th style={thStyle}>Lucro no mês</th>
+            <th style={thStyle}>Lucro acumulado</th>
+            <th style={thStyle}>Total previsto</th>
+          </tr>
+        </thead>
+        <tbody>
+          {Array.from({ length: meses }, (_, i) => {
+            const lucroMes = (valor * juros) / 100;
+            const acumulado = lucroMes * (i + 1);
+            const total = valor + lucroMes * meses;
 
-      return (
-        <tr key={i}>
-          <td style={tdStyle}>{`${i + 1}º`}</td>
-          <td style={tdStyle}>R$ {lucroMes.toFixed(2)}</td>
-          <td style={tdStyle}>R$ {acumulado.toFixed(2)}</td>
-          <td style={tdStyle}>R$ {total.toFixed(2)}</td>
-        </tr>
-      );
-    })}
-  </tbody>
-</table>
+            return (
+              <tr key={i}>
+                <td style={tdStyle}>{`${i + 1}º`}</td>
+                <td style={tdStyle}>R$ {lucroMes.toFixed(2)}</td>
+                <td style={tdStyle}>R$ {acumulado.toFixed(2)}</td>
+                <td style={tdStyle}>R$ {total.toFixed(2)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
 
       <h3 style={{ marginTop: 40 }}>📚 Contratos</h3>
-      {investidor.contratos?.map((c, i) => (
-        <div key={i} style={{ border: '1px solid #ccc', padding: 10, marginBottom: 20 }}>
-          <p><strong>Contrato #{i + 1}</strong> — R$ {c.valor} • {c.meses} meses • {c.juros}% juros • Total R$ {c.valor/c.juros * c.meses+c.valor}</p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-          <ParcelaQuadradinhos parcelas={gerarParcelas(c)} />
+      {investidor.contratos?.map((c, i) => {
+        const parcelas = c.parcelasEditadas || calcularParcelas(c.valor, c.meses, c.juros, c.dataInicio);
+        const pagamentos = c.pagamentos || Array.from({ length: c.meses }, () => 'pendente');
 
+        return (
+          <div key={i} style={{ border: '1px solid #ccc', padding: 10, marginBottom: 20 }}>
+            <p><strong>Contrato #{i + 1}</strong> — R$ {c.valor} • {c.meses} meses • {c.juros}% juros</p>
+            <h4>📅 Parcelas:</h4>
+            <table style={{ width: '100%', borderCollapse: 'collapse', backgroundColor: '#000', color: '#fff' }}>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Vencimento</th>
+                  <th>Valor</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {parcelas.map((p, j) => (
+                  <tr key={j} style={{ backgroundColor: pagamentos[j] === 'pago' ? '#14532d' : '#7f1d1d' }}>
+                    <td>{p.numero}</td>
+                    <td>{p.vencimento}</td>
+                    <td>R$ {p.valor.toFixed(2)}</td>
+                    <td>{pagamentos[j]}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
