@@ -1,11 +1,12 @@
+// DashboardAvancado.js FINALIZADO
 import React, { useEffect, useState } from 'react';
 import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, BarChart, XAxis, YAxis, Bar } from 'recharts';
 import { doc, getDoc, getDocs, collection } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
 export default function DashboardAvancado({ clientes }) {
-  const [dataInicio] = useState('');
-  const [dataFim ] = useState('');
+  const [dataInicio, setDataInicio] = useState('');
+  const [dataFim, setDataFim] = useState('');
   const [tokenAtual, setTokenAtual] = useState('');
   const [dadosFinanceiros, setDadosFinanceiros] = useState({});
   const cores = ['#D4AF37', '#235D3A', '#7D4F14'];
@@ -13,7 +14,7 @@ export default function DashboardAvancado({ clientes }) {
   useEffect(() => {
     carregarTokenAtual();
     calcularDadosInvestidores();
-  });
+  }, []);
 
   const carregarTokenAtual = async () => {
     const ref = doc(db, 'config', 'tokenAtual');
@@ -72,54 +73,8 @@ export default function DashboardAvancado({ clientes }) {
     setDadosFinanceiros({ capitalInvestido, totalPagoInvestidores, totalAPagarInvestidores });
   };
 
-
-  const calcularResumo = () => {
-    let totalEmprestado = 0;
-    let totalRecebido = 0;
-    let totalPendente = 0;
-    let lucroTotal = 0;
-    let statusContagem = { Ativo: 0, Quitado: 0, Cancelado: 0 };
-    let vencidos = 0;
-    const hoje = new Date().toISOString().split('T')[0];
-    const clientesResumo = [];
-
-    clientes?.forEach(cliente => {
-      let totalCliente = 0;
-      cliente.emprestimos?.forEach(emp => {
-        const dataEmprestimo = new Date(emp.dataCriacao);
-        if (dataInicio && dataEmprestimo < new Date(dataInicio)) return;
-        if (dataFim && dataEmprestimo > new Date(dataFim)) return;
-
-        totalEmprestado += emp.valorEmprestado || 0;
-        lucroTotal += emp.lucroTotal || 0;
-
-        statusContagem[emp.status] = (statusContagem[emp.status] || 0) + 1;
-        totalCliente += emp.valorEmprestado || 0;
-
-        emp.parcelas.forEach(p => {
-          const valor = p.valor || 0;
-          if (p.status === 'paga' || p.status === 'pulado') totalRecebido += valor;
-          if (p.status === 'pendente') totalPendente += valor;
-          if (p.status === 'pendente' && p.vencimento < hoje) vencidos++;
-        });
-      });
-      if (totalCliente > 0) {
-        clientesResumo.push({ nome: cliente.nome, valor: totalCliente });
-      }
-    });
-
-    clientesResumo.sort((a, b) => b.valor - a.valor);
-
-    return {
-      totalEmprestado,
-      totalRecebido,
-      totalPendente,
-      lucroTotal,
-      statusContagem,
-      vencidos,
-      topClientes: clientesResumo.slice(0, 3),
-      totalClientes: clientes.length
-    };
+  const gerarLinkWhatsapp = (mensagem) => {
+    return `https://wa.me/?text=${encodeURIComponent(mensagem)}`;
   };
 
   const mostrarVencimentosHoje = () => {
@@ -136,36 +91,92 @@ export default function DashboardAvancado({ clientes }) {
           const vencFormatado = venc.toISOString().split('T')[0];
 
           if (vencFormatado === hojeFormatado && p.status === 'pendente') {
-            mensagensHoje.push(`📌 ${cliente.nome} - Parcela #${p.numero} • R$ ${p.valor}`);
+            const mensagem = `Olá ${cliente.nome}, lembrando que sua parcela #${p.numero} no valor de R$ ${p.valor} vence hoje.`;
+            mensagensHoje.push({ texto: `📌 ${cliente.nome} - Parcela #${p.numero} • R$ ${p.valor}`, mensagem });
           }
         });
       });
     });
 
     if (mensagensHoje.length === 0) return alert("✅ Nenhuma parcela pendente vence hoje.");
-    alert(mensagensHoje.join('\n'));
+
+    const popup = window.open('', 'VencimentosHoje', 'width=500,height=600');
+    popup.document.write('<html><head><title>Vencimentos de Hoje</title></head><body style="font-family:sans-serif;background:#111;color:#D4AF37;padding:20px;">');
+    popup.document.write('<h2>📅 Vencimentos de Hoje</h2>');
+
+    mensagensHoje.forEach(m => {
+      popup.document.write(`
+        <div style="margin-bottom: 1.5rem; border-bottom: 1px solid #D4AF37; padding-bottom: 10px;">
+          <p>${m.texto}</p>
+          <a href='${gerarLinkWhatsapp(m.mensagem)}' target='_blank' style="color:#25D366;text-decoration:none;font-weight:bold;">📲 Enviar WhatsApp</a>
+        </div>
+      `);
+    });
+
+    popup.document.write('</body></html>');
+    popup.document.close();
   };
 
   const mostrarParcelasVencidas = () => {
-    const hoje = new Date().toISOString().split('T')[0];
+    const hoje = new Date();
     const mensagensAtraso = [];
 
     clientes?.forEach(cliente => {
       cliente.emprestimos?.forEach(emp => {
         emp.parcelas?.forEach(p => {
           if (!p.vencimento || p.status !== 'pendente') return;
-          if (p.vencimento < hoje) {
-            mensagensAtraso.push(`⚠️ ${cliente.nome} - Parcela #${p.numero} • R$ ${p.valor} • Venc: ${p.vencimento}`);
+          const venc = new Date(p.vencimento);
+          if (isNaN(venc.getTime())) return;
+
+          if (venc < hoje) {
+            const mensagem = `Olá ${cliente.nome}, sua parcela #${p.numero} no valor de R$ ${p.valor} venceu em ${p.vencimento}. Favor regularizar.`;
+            mensagensAtraso.push({ texto: `⚠️ ${cliente.nome} - Parcela #${p.numero} • R$ ${p.valor} • Venc: ${p.vencimento}`, mensagem });
           }
         });
       });
     });
 
     if (mensagensAtraso.length === 0) return alert("✅ Nenhuma parcela vencida.");
-    alert(mensagensAtraso.join('\n'));
+
+    const popup = window.open('', 'ParcelasVencidas', 'width=500,height=600');
+    popup.document.write('<html><head><title>Parcelas Vencidas</title></head><body style="font-family:sans-serif;background:#111;color:#D4AF37;padding:20px;">');
+    popup.document.write('<h2>⚠️ Parcelas em Atraso</h2>');
+
+    mensagensAtraso.forEach(m => {
+      popup.document.write(`
+        <div style="margin-bottom: 1.5rem; border-bottom: 1px solid #D4AF37; padding-bottom: 10px;">
+          <p>${m.texto}</p>
+          <a href='${gerarLinkWhatsapp(m.mensagem)}' target='_blank' style="color:#25D366;text-decoration:none;font-weight:bold;">📲 Enviar WhatsApp</a>
+        </div>
+      `);
+    });
+
+    popup.document.write('</body></html>');
+    popup.document.close();
   };
 
-  const resumo = calcularResumo();
+  const resumo = {
+    totalEmprestado: 0,
+    totalRecebido: 0,
+    totalPendente: 0,
+    statusContagem: {},
+    ...clientes.reduce(
+      (acc, cliente) => {
+        cliente.emprestimos?.forEach(emp => {
+          acc.totalEmprestado += emp.valorEmprestado || 0;
+          emp.parcelas.forEach(p => {
+            const valor = p.valor || 0;
+            if (p.status === 'paga' || p.status === 'pulado') acc.totalRecebido += valor;
+            if (p.status === 'pendente') acc.totalPendente += valor;
+          });
+          acc.statusContagem[emp.status] = (acc.statusContagem[emp.status] || 0) + 1;
+        });
+        return acc;
+      },
+      { totalEmprestado: 0, totalRecebido: 0, totalPendente: 0, statusContagem: {} }
+    ),
+  };
+
   const dadosGrafico = [
     { nome: 'Emprestado', valor: resumo.totalEmprestado },
     { nome: 'Recebido', valor: resumo.totalRecebido },
@@ -226,25 +237,23 @@ export default function DashboardAvancado({ clientes }) {
           <RechartsTooltip content={<CustomTooltip />} />
         </BarChart>
 
-       <p> <div style={{ flex: 1 }}>
-          
+        <div style={{ flex: 1 }}>
           <p style={textStyle}>💰 Total Emprestado: <strong>R$ {resumo.totalEmprestado.toFixed(2)}</strong></p>
           <p style={textStyle}>📥 Total Recebido: <strong>R$ {resumo.totalRecebido.toFixed(2)}</strong></p>
           <p style={textStyle}>⏳ Total Pendente: <strong>R$ {resumo.totalPendente.toFixed(2)}</strong></p>
           <p style={textStyle}>🔄 Total Esperado: <strong>R$ {(resumo.totalRecebido + resumo.totalPendente).toFixed(2)}</strong></p>
-          <p><h4 style={{ color: '#D4AF37', marginTop: '1rem' }}>📘 Legenda Financeira Geral</h4></p>
+          <h4 style={{ color: '#D4AF37', marginTop: '1rem' }}>📘 Legenda Financeira Geral</h4>
           <p style={textStyle}>💼 Capital Investido: <strong>R$ {dadosFinanceiros.capitalInvestido?.toFixed(2)}</strong></p>
           <p style={textStyle}>📤 Pagos aos Investidores: <strong>R$ {dadosFinanceiros.totalPagoInvestidores?.toFixed(2)}</strong></p>
           <p style={textStyle}>📈 Total a Pagar (Investidores): <strong>R$ {dadosFinanceiros.totalAPagarInvestidores?.toFixed(2)}</strong></p>
           <p style={textStyle}>⏳ Falta Pagar aos Investidores: <strong>R$ {(dadosFinanceiros.totalAPagarInvestidores - dadosFinanceiros.totalPagoInvestidores).toFixed(2)}</strong></p>
-        
-        </div></p>
+        </div>
 
-       <p> <div style={{ flex: 1 }}>
+        <div style={{ flex: 1 }}>
           <h4 style={{ color: '#D4AF37' }}>🔐 Token Atual</h4>
           <p style={{ fontSize: '1.5rem', color: '#fff' }}>{tokenAtual}</p>
           <p style={{ fontSize: '0.9rem', color: '#888' }}>Use esse código para assinatura de contrato</p>
-        </div></p>
+        </div>
       </div>
     </div>
   );
@@ -263,3 +272,4 @@ const textStyle = {
   color: '#F6F1DE',
   margin: '0.5rem 0'
 };
+
