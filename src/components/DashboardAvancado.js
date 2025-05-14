@@ -176,30 +176,40 @@ const inputStyle = {
   marginLeft: '0.5rem'
 };
 
-  const resumo = {
-  totalEmprestado: 0,
-  totalRecebido: 0,
-  totalPendente: 0,
-  statusContagem: {},
-  ...clientes.reduce(
-    (acc, cliente) => {
-      cliente.emprestimos?.forEach(emp => {
-        if (!filtrarPorData(emp.dataCriacao)) return;
-
+  const resumo = clientes.reduce(
+  (acc, cliente) => {
+    cliente.emprestimos?.forEach(emp => {
+      if (filtrarPorData(emp.dataCriacao)) {
         acc.totalEmprestado += emp.valorEmprestado || 0;
-        emp.parcelas.forEach(p => {
-          if (!filtrarPorData(p.vencimento)) return;
-          const valor = p.valor || 0;
-          if (p.status === 'paga' || p.status === 'pulado') acc.totalRecebido += valor;
-          if (p.status === 'pendente') acc.totalPendente += valor;
-        });
-        acc.statusContagem[emp.status] = (acc.statusContagem[emp.status] || 0) + 1;
+      }
+
+      emp.parcelas?.forEach(p => {
+        if (!p.vencimento || !filtrarPorData(p.vencimento)) return;
+        const valor = p.valor || 0;
+
+        acc.totalEsperado += valor;
+
+        if (p.status === 'paga' || p.status === 'pulado') {
+          acc.totalRecebido += valor;
+        }
+
+        if (p.status === 'pendente') {
+          acc.totalPendente += valor;
+        }
       });
-      return acc;
-    },
-    { totalEmprestado: 0, totalRecebido: 0, totalPendente: 0, statusContagem: {} }
-  ),
-};
+
+      acc.statusContagem[emp.status] = (acc.statusContagem[emp.status] || 0) + 1;
+    });
+    return acc;
+  },
+  {
+    totalEmprestado: 0,
+    totalRecebido: 0,
+    totalPendente: 0,
+    totalEsperado: 0,
+    statusContagem: {}
+  }
+);
 
 
 
@@ -279,7 +289,8 @@ const inputStyle = {
           <p style={textStyle}>💰 Total Emprestado: <strong>R$ {resumo.totalEmprestado.toFixed(2)}</strong></p>
           <p style={textStyle}>📥 Total Recebido: <strong>R$ {resumo.totalRecebido.toFixed(2)}</strong></p>
           <p style={textStyle}>⏳ Total Pendente: <strong>R$ {resumo.totalPendente.toFixed(2)}</strong></p>
-          <p style={textStyle}>🔄 Total Esperado: <strong>R$ {(resumo.totalRecebido + resumo.totalPendente).toFixed(2)}</strong></p>
+          <p style={textStyle}>🔄 Total Esperado: <strong>R$ {resumo.totalEsperado.toFixed(2)}</strong></p>
+
           <h4 style={{ color: '#D4AF37', marginTop: '1rem' }}>📘 Legenda Financeira Geral</h4>
           <p style={textStyle}>💼 Capital Investido: <strong>R$ {dadosFinanceiros.capitalInvestido?.toFixed(2)}</strong></p>
           <p style={textStyle}>📤 Pagos aos Investidores: <strong>R$ {dadosFinanceiros.totalPagoInvestidores?.toFixed(2)}</strong></p>
