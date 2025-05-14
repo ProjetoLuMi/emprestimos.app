@@ -1,5 +1,5 @@
-// DashboardAvancado.js FINALIZADO
-import React, { useEffect, useState } from 'react';
+// DashboardAvancado.js FINALIZADO COM FILTRO DE DATAS AJUSTADO (sem warnings)
+import React, { useEffect, useState, useCallback } from 'react';
 import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, BarChart, XAxis, YAxis, Bar } from 'recharts';
 import { doc, getDoc, getDocs, collection } from 'firebase/firestore';
 import { db } from '../services/firebase';
@@ -11,18 +11,44 @@ export default function DashboardAvancado({ clientes }) {
   const [dadosFinanceiros, setDadosFinanceiros] = useState({});
   const cores = ['#D4AF37', '#235D3A', '#7D4F14'];
 
-  useEffect(() => {
-    carregarTokenAtual();
-    calcularDadosInvestidores();
-  }, []);
-
-  const carregarTokenAtual = async () => {
+  const carregarTokenAtual = useCallback(async () => {
     const ref = doc(db, 'config', 'tokenAtual');
     const snap = await getDoc(ref);
     if (snap.exists()) {
       setTokenAtual(snap.data().valor);
     }
-  };
+  }, []);
+
+  const calcularDadosInvestidores = useCallback(async () => {
+    const snapshot = await getDocs(collection(db, 'investidores'));
+    let capitalInvestido = 0;
+    let totalPagoInvestidores = 0;
+    let totalAPagarInvestidores = 0;
+
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      (data.contratos || []).forEach(contrato => {
+        capitalInvestido += contrato.valor || 0;
+        const parcelas = contrato.parcelasEditadas || calcularParcelas(
+          contrato.valor, contrato.meses, contrato.juros, contrato.dataInicio
+        );
+        totalAPagarInvestidores += parcelas.reduce((sum, p) => sum + (p.valor || 0), 0);
+        const pagamentos = contrato.pagamentos || [];
+        pagamentos.forEach((status, index) => {
+          if (status === 'pago') {
+            totalPagoInvestidores += parcelas[index]?.valor || 0;
+          }
+        });
+      });
+    });
+
+    setDadosFinanceiros({ capitalInvestido, totalPagoInvestidores, totalAPagarInvestidores });
+  }, []);
+
+  useEffect(() => {
+    carregarTokenAtual();
+    calcularDadosInvestidores();
+  }, [carregarTokenAtual, calcularDadosInvestidores]);
 
   const calcularParcelas = (valor, meses, juros, dataInicio = new Date()) => {
     const parcelas = [];
@@ -47,31 +73,12 @@ export default function DashboardAvancado({ clientes }) {
     return parcelas;
   };
 
-  const calcularDadosInvestidores = async () => {
-    const snapshot = await getDocs(collection(db, 'investidores'));
-    let capitalInvestido = 0;
-    let totalPagoInvestidores = 0;
-    let totalAPagarInvestidores = 0;
-
-    snapshot.forEach(doc => {
-      const data = doc.data();
-      (data.contratos || []).forEach(contrato => {
-        capitalInvestido += contrato.valor || 0;
-        const parcelas = contrato.parcelasEditadas || calcularParcelas(
-          contrato.valor, contrato.meses, contrato.juros, contrato.dataInicio
-        );
-        totalAPagarInvestidores += parcelas.reduce((sum, p) => sum + (p.valor || 0), 0);
-        const pagamentos = contrato.pagamentos || [];
-        pagamentos.forEach((status, index) => {
-          if (status === 'pago') {
-            totalPagoInvestidores += parcelas[index]?.valor || 0;
-          }
-        });
-      });
-    });
-
-    setDadosFinanceiros({ capitalInvestido, totalPagoInvestidores, totalAPagarInvestidores });
-  };
+  const filtrarPorData = useCallback((data) => {
+    if (!data) return true;
+    const inicioOk = !dataInicio || new Date(data) >= new Date(dataInicio);
+    const fimOk = !dataFim || new Date(data) <= new Date(dataFim);
+    return inicioOk && fimOk;
+  }, [dataInicio, dataFim]);
 
   const gerarLinkWhatsapp = (mensagem) => {
     return `https://wa.me/?text=${encodeURIComponent(mensagem)}`;
@@ -84,6 +91,7 @@ export default function DashboardAvancado({ clientes }) {
 
     clientes?.forEach(cliente => {
       cliente.emprestimos?.forEach(emp => {
+        if (!filtrarPorData(emp.dataCriacao)) return;
         emp.parcelas?.forEach(p => {
           if (!p.vencimento) return;
           const venc = new Date(p.vencimento);
@@ -124,6 +132,7 @@ export default function DashboardAvancado({ clientes }) {
 
     clientes?.forEach(cliente => {
       cliente.emprestimos?.forEach(emp => {
+        if (!filtrarPorData(emp.dataCriacao)) return;
         emp.parcelas?.forEach(p => {
           if (!p.vencimento || p.status !== 'pendente') return;
           const venc = new Date(p.vencimento);
@@ -157,27 +166,42 @@ export default function DashboardAvancado({ clientes }) {
     popup.document.close();
   };
 
+  // ...continua com o JSX normalmente incluindo inputs de dataInicio/dataFim e uso do filtro
+const inputStyle = {
+  background: '#111',
+  color: '#fff',
+  border: '1px solid #D4AF37',
+  padding: '4px 8px',
+  borderRadius: '4px',
+  marginLeft: '0.5rem'
+};
+
   const resumo = {
-    totalEmprestado: 0,
-    totalRecebido: 0,
-    totalPendente: 0,
-    statusContagem: {},
-    ...clientes.reduce(
-      (acc, cliente) => {
-        cliente.emprestimos?.forEach(emp => {
-          acc.totalEmprestado += emp.valorEmprestado || 0;
-          emp.parcelas.forEach(p => {
-            const valor = p.valor || 0;
-            if (p.status === 'paga' || p.status === 'pulado') acc.totalRecebido += valor;
-            if (p.status === 'pendente') acc.totalPendente += valor;
-          });
-          acc.statusContagem[emp.status] = (acc.statusContagem[emp.status] || 0) + 1;
+  totalEmprestado: 0,
+  totalRecebido: 0,
+  totalPendente: 0,
+  statusContagem: {},
+  ...clientes.reduce(
+    (acc, cliente) => {
+      cliente.emprestimos?.forEach(emp => {
+        if (!filtrarPorData(emp.dataCriacao)) return;
+
+        acc.totalEmprestado += emp.valorEmprestado || 0;
+        emp.parcelas.forEach(p => {
+          if (!filtrarPorData(p.vencimento)) return;
+          const valor = p.valor || 0;
+          if (p.status === 'paga' || p.status === 'pulado') acc.totalRecebido += valor;
+          if (p.status === 'pendente') acc.totalPendente += valor;
         });
-        return acc;
-      },
-      { totalEmprestado: 0, totalRecebido: 0, totalPendente: 0, statusContagem: {} }
-    ),
-  };
+        acc.statusContagem[emp.status] = (acc.statusContagem[emp.status] || 0) + 1;
+      });
+      return acc;
+    },
+    { totalEmprestado: 0, totalRecebido: 0, totalPendente: 0, statusContagem: {} }
+  ),
+};
+
+
 
   const dadosGrafico = [
     { nome: 'Emprestado', valor: resumo.totalEmprestado },
@@ -208,6 +232,18 @@ export default function DashboardAvancado({ clientes }) {
   return (
     <div style={{ background: '#000', padding: '2rem', borderRadius: '12px', border: '1px solid #D4AF37' }}>
       <h2 style={{ color: '#D4AF37' }}>📊 Dashboard Avançado</h2>
+
+      <div style={{ margin: '1rem 0', display: 'flex', alignItems: 'center', gap: '5rem' }}>
+  <label style={{ color: '#F6F1DE' }}>
+    De:
+    <input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)} style={inputStyle} />
+  </label>
+  <label style={{ color: '#F6F1DE' }}>
+    Até:
+    <input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)} style={inputStyle} />
+  </label>
+  <button onClick={() => calcularDadosInvestidores()} style={btnStyle}> Aplicar Filtro</button>
+</div>
 
       <div style={{ marginBottom: '1rem' }}>
         <button onClick={mostrarVencimentosHoje} style={btnStyle}>📅 Vencimentos de Hoje</button>
