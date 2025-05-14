@@ -119,6 +119,7 @@ export default function DashboardAvancado({ clientes }) {
 
   const mostrarParcelasVencidas = () => {
     const hoje = new Date();
+    const hojeFormatado = hoje.toISOString().split('T')[0];
     const mensagensAtraso = [];
 
     clientes?.forEach(cliente => {
@@ -127,8 +128,9 @@ export default function DashboardAvancado({ clientes }) {
           if (!p.vencimento || p.status !== 'pendente') return;
           const venc = new Date(p.vencimento);
           if (isNaN(venc.getTime())) return;
+          const vencFormatado = venc.toISOString().split('T')[0];
 
-          if (venc < hoje) {
+          if (vencFormatado < hojeFormatado) {
             const mensagem = `Olá ${cliente.nome}, sua parcela #${p.numero} no valor de R$ ${p.valor} venceu em ${p.vencimento}. Favor regularizar.`;
             mensagensAtraso.push({ texto: `⚠️ ${cliente.nome} - Parcela #${p.numero} • R$ ${p.valor} • Venc: ${p.vencimento}`, mensagem });
           }
