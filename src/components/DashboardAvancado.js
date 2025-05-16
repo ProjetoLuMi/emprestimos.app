@@ -165,6 +165,42 @@ export default function DashboardAvancado({ clientes }) {
     popup.document.write('</body></html>');
     popup.document.close();
   };
+  const mostrarDetalhesPendentes = () => {
+  const listaPendentes = [];
+
+  clientes?.forEach(cliente => {
+    cliente.emprestimos?.forEach(emp => {
+      if (!filtrarPorData(emp.dataCriacao)) return;
+      emp.parcelas?.forEach(p => {
+        if (p.status === 'pendente' && filtrarPorData(p.vencimento)) {
+          listaPendentes.push({
+            nome: cliente.nome,
+            numero: p.numero,
+            valor: p.valor,
+            vencimento: p.vencimento
+          });
+        }
+      });
+    });
+  });
+
+  if (listaPendentes.length === 0) return alert('✅ Nenhuma parcela pendente encontrada.');
+
+  const popup = window.open('', 'Pendentes', 'width=600,height=700');
+  popup.document.write('<html><head><title>Parcelas Pendentes</title></head><body style="font-family:sans-serif;background:#111;color:#D4AF37;padding:20px;">');
+  popup.document.write('<h2>📋 Parcelas Pendentes</h2>');
+
+  listaPendentes.forEach(p => {
+    popup.document.write(`
+      <div style="margin-bottom: 1rem; border-bottom: 1px solid #D4AF37; padding-bottom: 10px;">
+        <p><strong>${p.nome}</strong> - Parcela #${p.numero} • R$ ${p.valor.toFixed(2)} • Vencimento: ${p.vencimento}</p>
+      </div>
+    `);
+  });
+
+  popup.document.write('</body></html>');
+  popup.document.close();
+};
 
   // ...continua com o JSX normalmente incluindo inputs de dataInicio/dataFim e uso do filtro
 const inputStyle = {
@@ -288,7 +324,12 @@ const inputStyle = {
         <div style={{ flex: 1 }}>
           <p style={textStyle}>💰 Total Emprestado: <strong>R$ {resumo.totalEmprestado.toFixed(2)}</strong></p>
           <p style={textStyle}>📥 Total Recebido: <strong>R$ {resumo.totalRecebido.toFixed(2)}</strong></p>
-          <p style={textStyle}>⏳ Total Pendente: <strong>R$ {resumo.totalPendente.toFixed(2)}</strong></p>
+         <p style={textStyle}>
+  ⏳ Total Pendente:  <strong> R$ {resumo.totalPendente.toFixed(2)} </strong>
+  <button onClick={mostrarDetalhesPendentes} style={{ marginLeft: '10px',marginTop: '10px', background: 'none', color: '#25D366', border: 'none', cursor: 'pointer' }}>
+   🔍 Ver Detalhes
+  </button>
+</p>
           <p style={textStyle}>🔄 Total Esperado: <strong>R$ {resumo.totalEsperado.toFixed(2)}</strong></p>
 
           <h4 style={{ color: '#D4AF37', marginTop: '1rem' }}>📘 Legenda Financeira Geral</h4>
