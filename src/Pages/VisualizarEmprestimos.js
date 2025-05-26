@@ -366,6 +366,21 @@ const gerarParcelaExtra = async (i) => {
   await atualizarFirebase(novaLista);
   
 };
+const editarValorParcela = async (i, j) => {
+  const novoValor = parseFloat(prompt("Novo valor da parcela:"));
+  if (isNaN(novoValor) || novoValor <= 0) return alert("Valor inválido.");
+
+  const novaLista = [...emprestimos];
+  novaLista[i].parcelas[j].valor = novoValor;
+
+  recalcularLucroTotal(novaLista[i]);
+  registrarHistorico(novaLista[i], `Valor da parcela #${j + 1} alterado para R$ ${novoValor}`);
+
+  await atualizarFirebase(novaLista);
+};
+
+
+
 const excluirParcela = async (i, j) => {
   if (!window.confirm(`Deseja excluir a parcela #${j + 1}?`)) return;
 
@@ -438,23 +453,25 @@ const alterarValorEmprestado = async (i) => {
         <div style={{ marginTop: '2rem' }}>
           <h3>📂 Cliente: {clienteSelecionado.nome}</h3>
 
-          <div style={{ marginBottom: '1rem' }}>
+          <div style={{ marginBottom: '1rem', marginLeft: '2rem' }}>
   <button onClick={editarCliente} style={{ marginRight: '1rem', background: '#2d2', color: '#000', padding: '0.5rem', border: 'none', borderRadius: '6px' }}>✏️ Editar Cliente</button>
   <button onClick={excluirCliente} style={{ background: '#d22', color: '#fff', padding: '0.5rem', border: 'none', borderRadius: '6px' }}>🗑️ Excluir Cliente</button>
 </div>
 
           {emprestimos.map((emp, i) => (
             
-            <div key={i} style={{ background: '#111', padding: '1rem', borderRadius: '10px', border: '1px solid #D4AF37', marginBottom: '2rem' }}>
+            <div key={i} style={{ background: '#111', padding: '2rem', borderRadius: '10px', border: '1px solid #D4AF37', marginBottom: '2rem' }}>
               <h4 style={{ color: '#F6F1DE' }}>Empréstimo #{i + 1} - {emp.status || "Ativo"}</h4>
               <p>📅 Data de contratação: {emp.dataCriacao || '---'} <button onClick={() => editarDataContrato(i)}>✏️</button></p>
               <p>📦 Tipo: {emp.tipoContrato?.toUpperCase() || '---'} | Juros: {emp.juros || '---'}%</p>
               <p> 💵 Valor: R$ {emp.valorEmprestado}
+                
+                
                 <button onClick={() => alterarValorEmprestado(i)}>✏️</button>
-  |               {emp.parcelasTotais}x de R$ {emp.valorParcela}
-              </p>
 
+                {emp.parcelasTotais}x de R$ {emp.valorParcela}</p>
               <p>📈 Lucro: R$ {emp.lucroTotal} | ⏭️ Pulos disponíveis: {emp.pulosDisponiveis}</p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem' }}>
               <button onClick={() => gerarParcelaExtra(i)}> ➕ Nova Parcela</button>
               <button onClick={() => gerarPDF(emp, i)}>📄 PDF</button>
               <button onClick={() => quitarEmprestimo(i)}>✅ Quitar</button>
@@ -466,22 +483,30 @@ const alterarValorEmprestado = async (i) => {
   
 
 )}
-
-
-
+</div>
 
 
 
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', marginTop: '1rem' }}>
                 {emp.parcelas.map((p, j) => (
                   <div key={j} style={{ border: '1px solid #999', padding: '0.75rem', borderRadius: '6px', background: p.status === 'paga' ? '#235D3A' : p.status === 'pulado' ? '#7D4F14' : '#222', color: '#fff', position: 'relative' }}>
-                    <p>#{p.numero} • R$ {p.valor}</p>
+                    <p>
+  #{p.numero} • R$ {p.valor}
+  <button onClick={() => editarValorParcela(i, j)} style={{ 
+      background: 'transparent', 
+      border: 'none', 
+      color: '#2d2', 
+      marginLeft: '4px', 
+      cursor: 'pointer',
+      fontSize: '10px'
+    }}
+    title="Editar valor da parcela"> ✏️</button></p>
+
                     <p>Status: {p.status}</p>
+                    
                     <p>📅 Vencimento: {p.vencimento || '---'} <button onClick={() => editarVencimentoParcela(i, j)}>✏️</button></p>
 
-                    <button onClick={() => pagarParcela(i, j)}>
-  {p.status === 'paga' ? '↩️ Voltar Pagamento' : '✅ Pagar'}
-</button>
+                    <button onClick={() => pagarParcela(i, j)}>{p.status === 'paga' ? '↩️ Voltar Pagamento' : '✅ Pagar'}</button>
 
 <button
   onClick={() => pularParcela(i, j)}
@@ -491,6 +516,7 @@ const alterarValorEmprestado = async (i) => {
 >
   {p.status === 'pulado' ? '↩️ Desfazer Pulo' : '⏭️ Pular'}
   {hoverPularIndex === `${i}-${j}` && p.status !== 'pulado' && (
+    
     <div style={{ position: 'absolute', bottom: '125%', left: '50%', transform: 'translateX(-50%)', background: '#111', color: '#D4AF37', padding: '6px 10px', borderRadius: '6px', whiteSpace: 'nowrap', fontSize: '12px', border: '1px solid #D4AF37', pointerEvents: 'none', zIndex: '10' }}>
       Valor do pulo: R$ {Math.ceil(emp.valorParcela * 0.4)}
       
