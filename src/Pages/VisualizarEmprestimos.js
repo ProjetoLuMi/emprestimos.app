@@ -288,6 +288,8 @@ export default function VisualizarEmprestimos() {
     novaLista.splice(i, 1);
     await atualizarFirebase(novaLista);
   };
+
+  
   
   const gerarPDF = (emp, i) => {
     const doc = new jsPDF();
@@ -341,12 +343,65 @@ const editarCliente = async () => {
     alert("Erro ao editar cliente.");
   }
 };
+const gerarParcelaExtra = async (i) => {
+  const novaLista = [...emprestimos];
+  const emp = novaLista[i];
+  const ultimaParcela = emp.parcelas[emp.parcelas.length - 1];
+  
+  const novaData = new Date(ultimaParcela.vencimento || new Date());
+  const dias = emp.tipoContrato === 'mensal' ? 30 : 7;
+  novaData.setDate(novaData.getDate() + dias);
+
+  emp.parcelas.push({
+    numero: emp.parcelas.length + 1,
+    valor: emp.valorParcela,
+    status: 'pendente',
+    vencimento: novaData.toISOString().split('T')[0]
+  });
+
+  emp.parcelasTotais += 1;
+  registrarHistorico(emp, `Parcela extra gerada como número ${emp.parcelas.length}`);
+  recalcularLucroTotal(emp);
+
+  await atualizarFirebase(novaLista);
+  
+};
+const excluirParcela = async (i, j) => {
+  if (!window.confirm(`Deseja excluir a parcela #${j + 1}?`)) return;
+
+  const novaLista = [...emprestimos];
+  novaLista[i].parcelas.splice(j, 1);
+  novaLista[i].parcelasTotais -= 1;
+
+  // Reajustar números das parcelas
+  novaLista[i].parcelas = novaLista[i].parcelas.map((p, index) => ({
+    ...p,
+    numero: index + 1
+  }));
+
+  recalcularLucroTotal(novaLista[i]);
+  registrarHistorico(novaLista[i], `Parcela #${j + 1} excluída.`);
+
+  await atualizarFirebase(novaLista);
+};
+
 
   // continua com os métodos de quitar, cancelar, excluir, editar e renderização JSX normalmente
 
 
   // ... o restante do código JSX permanece o mesmo
+const alterarValorEmprestado = async (i) => {
+  const novoValor = parseFloat(prompt("Novo valor emprestado:"));
+  if (isNaN(novoValor) || novoValor <= 0) return alert("Valor inválido.");
 
+  const novaLista = [...emprestimos];
+  novaLista[i].valorEmprestado = novoValor;
+  recalcularLucroTotal(novaLista[i]);
+  registrarHistorico(novaLista[i], `Valor emprestado alterado para R$ ${novoValor}`);
+
+  await atualizarFirebase(novaLista);
+  
+};
 
 
   return (
@@ -394,9 +449,13 @@ const editarCliente = async () => {
               <h4 style={{ color: '#F6F1DE' }}>Empréstimo #{i + 1} - {emp.status || "Ativo"}</h4>
               <p>📅 Data de contratação: {emp.dataCriacao || '---'} <button onClick={() => editarDataContrato(i)}>✏️</button></p>
               <p>📦 Tipo: {emp.tipoContrato?.toUpperCase() || '---'} | Juros: {emp.juros || '---'}%</p>
-              <p>💵 Valor: R$ {emp.valorEmprestado} | {emp.parcelasTotais}x de R$ {emp.valorParcela}</p>
-              <p>📈 Lucro: R$ {emp.lucroTotal} | ⏭️ Pulos disponíveis: {emp.pulosDisponiveis}</p>
+              <p> 💵 Valor: R$ {emp.valorEmprestado}
+                <button onClick={() => alterarValorEmprestado(i)}>✏️</button>
+  |               {emp.parcelasTotais}x de R$ {emp.valorParcela}
+              </p>
 
+              <p>📈 Lucro: R$ {emp.lucroTotal} | ⏭️ Pulos disponíveis: {emp.pulosDisponiveis}</p>
+              <button onClick={() => gerarParcelaExtra(i)}> ➕ Nova Parcela</button>
               <button onClick={() => gerarPDF(emp, i)}>📄 PDF</button>
               <button onClick={() => quitarEmprestimo(i)}>✅ Quitar</button>
               <button onClick={() => cancelarEmprestimo(i)}>🟠 Cancelar</button>
@@ -404,7 +463,10 @@ const editarCliente = async () => {
               <button onClick={() => refinanciarEmprestimo(i)}>💸 Refinanciar</button>
               {emp.backupAnterior && (
   <button onClick={() => desfazerRefinanciamento(i)}>↩️ Desfazer Refinanciamento</button>
+  
+
 )}
+
 
 
 
@@ -454,9 +516,7 @@ const editarCliente = async () => {
     alt="WhatsApp"
     style={{ width: '20px', height: '20px' }}
   />
-</button>
-
-
+</button><button onClick={() => excluirParcela(i, j)} style={{ background: 'transparent', border: 'none', color: '#d22', marginLeft: '200px', cursor: 'pointer',fontSize: '10px'}}title="Excluir Parcela">❌</button>
 
                   </div>
                 ))}
